@@ -1,0 +1,7 @@
+# Screen translator runtime: PaddleOCR 3.x for Chinese text detection and recognition.
+paddlepaddle==3.2.0
+paddleocr>=3.7,<4
+opencv-contrib-python
+numpy
+pillow
+certifi

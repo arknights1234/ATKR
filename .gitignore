@@ -1,0 +1,23 @@
+# Allow list: only the screen translator's code and its runtime dictionary are published.
+# Game data tools, extracted data, virtualenv files, builds and local caches stay out.
+*
+!.gitignore
+!.gitattributes
+!README.md
+!requirements-ocr.txt
+
+!app_paths.py
+!deepl_translate.py
+!dictionary_updater.py
+!localization_text.py
+!net.py
+!screen_translator.py
+!secure_settings.py
+!translator_app.py
+!window_finder.py
+
+!font/
+!font/NotoSansCJKkr-Medium.otf
+!font/LICENSE.txt
+!data/
+!data/runtime_dictionary.sqlite3
