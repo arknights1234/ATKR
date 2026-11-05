@@ -12,6 +12,8 @@ from urllib.request import Request, urlopen
 
 from net import https_context
 
+GLOSSARY_LOOKUP_TIMEOUT = 8
+
 
 def translate(texts: list[str], auth_key: str, source_lang: str, target_lang: str, **options) -> list[dict]:
     """Send one batch to DeepL and return the per-text translation objects.
@@ -48,6 +50,22 @@ def translate(texts: list[str], auth_key: str, source_lang: str, target_lang: st
     if not isinstance(translations, list) or len(translations) != len(texts):
         raise RuntimeError("DeepL 응답의 번역 개수가 요청한 문장 수와 다릅니다.")
     return translations
+
+
+def find_glossary_id(auth_key: str, name_prefix: str, source_lang: str, target_lang: str) -> str | None:
+    """Newest ready glossary on this key's account, or None. Glossaries belong to one account."""
+    api_host = "api-free.deepl.com" if auth_key.endswith(":fx") else "api.deepl.com"
+    request = Request(f"https://{api_host}/v2/glossaries", headers={"Authorization": f"DeepL-Auth-Key {auth_key}"})
+    with urlopen(request, timeout=GLOSSARY_LOOKUP_TIMEOUT, context=https_context()) as response:
+        glossaries = json.loads(response.read().decode("utf-8")).get("glossaries", [])
+    usable = [
+        item for item in glossaries
+        if str(item.get("name", "")).startswith(name_prefix) and item.get("ready")
+        and str(item.get("source_lang", "")).upper() == source_lang and str(item.get("target_lang", "")).upper() == target_lang
+    ]
+    if not usable:
+        return None
+    return max(usable, key=lambda item: str(item.get("creation_time", "")))["glossary_id"]
 
 
 def read_ocr_json(path: Path) -> tuple[list[str], list[dict]]:

@@ -21,7 +21,7 @@ import cv2
 import numpy as np
 
 from app_paths import active_runtime_dictionary_path, runtime_dictionary_path, translation_cache_path
-from deepl_translate import translate
+from deepl_translate import find_glossary_id, translate
 from localization_text import EDGE_SYMBOLS, OCR_NARROW_FORMS, PLACEHOLDER_RE, fill_numbers, fold_text, loose_key, normalize_text
 from window_finder import (
     BITMAPINFO,
@@ -94,6 +94,8 @@ ROOM_MARGIN = 6
 QUOTE_PAIRS = (("“", "”"), ("‘", "’"), ("「", "」"), ("『", "』"), ("《", "》"), ("（", "）"), ("(", ")"))
 # Bump when request handling changes, so older machine translations are not reused.
 CACHE_KEY_PREFIX = "\x01v2:"
+GLOSSARY_CACHE_KEY_PREFIX = "\x01v3:"
+GLOSSARY_NAME_PREFIX = "arknights_glossary"
 DEEPL_CONTEXT = (
     "명일방주(Arknights) 모바일 게임의 UI 문구와 대사. "
     "作战은 작전, 干员은 오퍼레이터, 代理指挥는 대리 지휘."
@@ -216,6 +218,7 @@ def load_translation_cache() -> dict[str, str]:
 
 
 TRANSLATION_CACHE = load_translation_cache()
+GLOSSARY_IDS: dict[str, str | None] = {}
 
 
 RUNTIME_LOOKUP_LOCAL = threading.local()
@@ -493,6 +496,17 @@ def client_rect_on_screen(hwnd: wintypes.HWND) -> tuple[int, int, int, int] | No
     return origin.x, origin.y, client.right - client.left, client.bottom - client.top
 
 
+def account_glossary_id(auth_key: str) -> str | None:
+    """The account's glossary, looked up once. A failed lookup is retried on the next translation."""
+    if auth_key not in GLOSSARY_IDS:
+        try:
+            GLOSSARY_IDS[auth_key] = find_glossary_id(auth_key, GLOSSARY_NAME_PREFIX, "ZH", "KO")
+        except (OSError, ValueError) as error:
+            print(f"DeepL 용어집 확인 실패: {error}", flush=True)
+            return None
+    return GLOSSARY_IDS[auth_key]
+
+
 def make_translation_job(captured_image: np.ndarray, auth_key: str | None = None) -> tuple[Image.Image, list[dict]]:
     captured = time.perf_counter()
     detections = recognize_text(np.ascontiguousarray(captured_image[:, :, :3]))
@@ -517,6 +531,9 @@ def make_translation_job(captured_image: np.ndarray, auth_key: str | None = None
     request_texts: list[str] = []
     request_cache_keys: list[str] = []
     dictionary_hits = cache_hits = protected_term_count = 0
+    auth_key = (auth_key or os.environ.get("DEEPL_AUTH_KEY", "")).strip()
+    glossary_id = None
+    glossary_checked = False
     for index, detection in enumerate(detections):
         source_text = detection["text"]
         detection["translation"] = source_text
@@ -528,33 +545,52 @@ def make_translation_job(captured_image: np.ndarray, auth_key: str | None = None
             detection["translation_source"] = "dictionary"
             dictionary_hits += 1
             continue
-        cache_key = CACHE_KEY_PREFIX + source_text
+        if auth_key and not glossary_checked:
+            glossary_id = account_glossary_id(auth_key)
+            glossary_checked = True
+        cache_key = (GLOSSARY_CACHE_KEY_PREFIX if glossary_id else CACHE_KEY_PREFIX) + source_text
         if cache_key in TRANSLATION_CACHE:
             detection["translation"] = TRANSLATION_CACHE[cache_key]
             detection["translation_source"] = "cache"
             cache_hits += 1
             continue
-        protected_text, protected = protect_official_terms(source_text)
+        # Protecting terms in tags alongside a glossary left Chinese untranslated around the tags.
+        protected_text, protected = (source_text, 0) if glossary_id else protect_official_terms(source_text)
         translate_indexes.append(index)
         request_texts.append(protected_text)
         request_cache_keys.append(cache_key)
         protected_term_count += protected
     translation_started = time.perf_counter()
     if translate_indexes:
-        auth_key = (auth_key or os.environ.get("DEEPL_AUTH_KEY", "")).strip()
         try:
             if not auth_key:
                 raise RuntimeError("DeepL API 키가 없어 사전에 없는 문구는 원문으로 둡니다.")
-            translations = translate(
-                request_texts, auth_key, "ZH", "KO",
-                context=DEEPL_CONTEXT, tag_handling="xml", ignore_tags=["x"],
-            )
+            translations = None
+            if glossary_id:
+                try:
+                    translations = translate(
+                        request_texts, auth_key, "ZH", "KO", context=DEEPL_CONTEXT, glossary_id=glossary_id,
+                    )
+                except RuntimeError as error:
+                    print(f"DeepL 용어집 사용 실패, 용어집 없이 다시 시도합니다: {error}", flush=True)
+                    GLOSSARY_IDS.pop(auth_key, None)
+                    glossary_id = None
+                    texts = [str(detections[index]["text"]) for index in translate_indexes]
+                    request_texts = [protect_official_terms(text)[0] for text in texts]
+                    request_cache_keys = [CACHE_KEY_PREFIX + text for text in texts]
+            if translations is None:
+                translations = translate(
+                    request_texts, auth_key, "ZH", "KO",
+                    context=DEEPL_CONTEXT, tag_handling="xml", ignore_tags=["x"],
+                )
         except RuntimeError as error:
             # Official dictionary results are still worth showing.
             print(f"DeepL 번역 실패: {error}", flush=True)
             translations = []
         for index, result, cache_key in zip(translate_indexes, translations, request_cache_keys):
-            translated_text = restore_official_terms(result.get("text", detections[index]["text"]))
+            translated_text = result.get("text", detections[index]["text"])
+            if not glossary_id:
+                translated_text = restore_official_terms(translated_text)
             detections[index]["translation"] = translated_text
             detections[index]["translation_source"] = "deepl"
             TRANSLATION_CACHE[cache_key] = translated_text
