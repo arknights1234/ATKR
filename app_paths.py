@@ -35,6 +35,10 @@ def _writable_file(name: str) -> Path:
         return user_data_dir() / name
 
 
+def icon_path() -> Path:
+    return Path(__file__).resolve().parent / "icon" / "app.ico"
+
+
 def overlay_log_path() -> Path:
     return _writable_file("overlay.log")
 

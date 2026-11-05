@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import ctypes
 import os
 from pathlib import Path
 import subprocess
@@ -12,6 +13,7 @@ import threading
 tk = None
 messagebox = None
 ttk = None
+rounded_avatar = None
 
 
 def _load_tkinter() -> None:
@@ -23,7 +25,7 @@ def _load_tkinter() -> None:
     messagebox = messagebox_module
     ttk = ttk_module
 
-from app_paths import install_dir, overlay_log_path
+from app_paths import icon_path, install_dir, overlay_log_path
 from dictionary_updater import update_dictionary
 from secure_settings import load_settings, save_settings
 from window_finder import Window, find_windows
@@ -72,12 +74,19 @@ def _overlay_child(hwnd: int) -> int:
     return 0
 
 
+def _set_window_icon(root) -> None:
+    try:
+        # Without its own ID, a script run from source shows Python's icon on the taskbar.
+        ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID("ATKR.ScreenTranslator")
+        root.iconbitmap(default=str(icon_path()))
+    except (OSError, tk.TclError):
+        pass
+
+
 class TranslatorGui:
     def __init__(self, root: tk.Tk):
         self.root = root
         self.root.title("명일방주 화면 번역기")
-        self.root.geometry("600x390")
-        self.root.minsize(540, 360)
         self.root.protocol("WM_DELETE_WINDOW", self.close)
         self.settings = load_settings()
         self.windows: list[Window] = []
@@ -93,51 +102,63 @@ class TranslatorGui:
         self.dictionary_status = tk.StringVar(value="현재 버전 확인 중")
 
         self._build_ui()
+        # Fit the height to the content, which depends on the display scale.
+        self.root.update_idletasks()
+        height = self.root.winfo_reqheight() + 12
+        self.root.geometry(f"620x{height}")
+        self.root.minsize(540, height)
         self.refresh_windows()
         self._refresh_dictionary_status()
         self.root.after(500, self._poll_child)
 
     def _build_ui(self) -> None:
-        container = ttk.Frame(self.root, padding=18)
-        container.pack(fill="both", expand=True)
-        ttk.Label(container, text="명일방주 화면 번역기", font=("Segoe UI", 16, "bold")).pack(anchor="w")
-        ttk.Label(container, text="중국 서버 게임 화면을 캡처해 한섭 사전과 DeepL로 번역합니다.").pack(anchor="w", pady=(3, 14))
+        card = ttk.Frame(self.root, padding=(26, 8, 26, 22))
+        card.pack(fill="both", expand=True)
 
-        window_row = ttk.Frame(container)
-        window_row.pack(fill="x", pady=4)
-        ttk.Label(window_row, text="게임 창", width=12).pack(side="left")
+        header = ttk.Frame(card)
+        header.pack(fill="x", pady=(0, 16))
+        self.avatar = rounded_avatar(icon_path(), 46)
+        if self.avatar:
+            ttk.Label(header, image=self.avatar).pack(side="left", padx=(0, 12))
+        titles = ttk.Frame(header)
+        titles.pack(side="left", fill="x", expand=True)
+        ttk.Label(titles, text="명일방주 화면 번역기", style="Title.TLabel").pack(anchor="w")
+        ttk.Label(titles, text="중국 서버 게임 화면을 캡처해 한섭 사전과 DeepL로 번역합니다.", style="Hint.TLabel").pack(anchor="w")
+
+        ttk.Label(card, text="게임 창", style="Field.TLabel").pack(anchor="w")
+        window_row = ttk.Frame(card)
+        window_row.pack(fill="x", pady=(4, 14))
         self.window_combo = ttk.Combobox(window_row, textvariable=self.window_choice, state="readonly")
         self.window_combo.pack(side="left", fill="x", expand=True, padx=(0, 8))
         ttk.Button(window_row, text="새로고침", command=self.refresh_windows).pack(side="left")
 
-        key_row = ttk.Frame(container)
-        key_row.pack(fill="x", pady=4)
-        ttk.Label(key_row, text="DeepL API 키", width=12).pack(side="left")
+        ttk.Label(card, text="DeepL API 키", style="Field.TLabel").pack(anchor="w")
+        key_row = ttk.Frame(card)
+        key_row.pack(fill="x", pady=(4, 8))
         self.key_entry = ttk.Entry(key_row, textvariable=self.api_key, show="•")
-        self.key_entry.pack(side="left", fill="x", expand=True, padx=(0, 8))
-        ttk.Checkbutton(key_row, text="표시", variable=self.show_api_key, command=self._toggle_key_visibility).pack(side="left")
+        self.key_entry.pack(side="left", fill="x", expand=True, padx=(0, 12))
+        ttk.Checkbutton(key_row, text="표시", style="Toggle.TCheckbutton", variable=self.show_api_key, command=self._toggle_key_visibility).pack(side="left")
+        ttk.Checkbutton(card, text="API 키를 이 Windows 계정에 암호화해 저장", style="Toggle.TCheckbutton", variable=self.save_api_key).pack(anchor="w", pady=(0, 14))
 
-        options_row = ttk.Frame(container)
-        options_row.pack(fill="x", pady=(0, 4))
-        ttk.Checkbutton(options_row, text="API 키를 이 Windows 계정에 암호화해 저장", variable=self.save_api_key).pack(side="left", padx=(94, 0))
-
-        dictionary_row = ttk.Frame(container)
-        dictionary_row.pack(fill="x", pady=4)
-        ttk.Label(dictionary_row, text="GitHub 사전", width=12).pack(side="left")
-        ttk.Label(dictionary_row, textvariable=self.dictionary_status).pack(side="left", fill="x", expand=True)
+        dictionary_row = ttk.Frame(card)
+        dictionary_row.pack(fill="x", pady=(0, 14))
+        dictionary_text = ttk.Frame(dictionary_row)
+        dictionary_text.pack(side="left", fill="x", expand=True)
+        ttk.Label(dictionary_text, text="GitHub 사전", style="Field.TLabel").pack(anchor="w")
+        ttk.Label(dictionary_text, textvariable=self.dictionary_status, style="Hint.TLabel").pack(anchor="w")
         self.update_button = ttk.Button(dictionary_row, text="업데이트 확인", command=self.update_dictionary)
-        self.update_button.pack(side="left")
+        self.update_button.pack(side="right")
 
-        actions = ttk.Frame(container)
-        actions.pack(fill="x", pady=(8, 12))
-        self.start_button = ttk.Button(actions, text="번역 시작", command=self.start_overlay)
+        ttk.Frame(card, style="Line.TFrame", height=1).pack(fill="x", pady=(0, 14))
+        actions = ttk.Frame(card)
+        actions.pack(fill="x", pady=(0, 10))
+        self.start_button = ttk.Button(actions, text="번역 시작", style="Primary.TButton", command=self.start_overlay)
         self.start_button.pack(side="left")
         self.stop_button = ttk.Button(actions, text="번역 중지", command=self.stop_overlay, state="disabled")
         self.stop_button.pack(side="left", padx=8)
 
-        ttk.Separator(container).pack(fill="x", pady=8)
-        ttk.Label(container, textvariable=self.status, wraplength=530).pack(anchor="w", pady=5)
-        ttk.Label(container, text="오버레이 단축키: Ctrl+S 표시/숨김  |  Ctrl+Shift+S 종료", foreground="#555").pack(anchor="w", pady=(5, 0))
+        ttk.Label(card, textvariable=self.status, wraplength=540).pack(anchor="w", pady=(0, 4))
+        ttk.Label(card, text="단축키: Ctrl+S 표시/숨김  |  Ctrl+Shift+S 종료", style="Hint.TLabel").pack(anchor="w")
 
     def _toggle_key_visibility(self) -> None:
         self.key_entry.configure(show="" if self.show_api_key.get() else "•")
@@ -303,8 +324,14 @@ def main(argv: list[str] | None = None) -> int:
             return 2
         return _overlay_child(args.hwnd)
     _load_tkinter()
+    from ui_theme import apply_theme, blend_title_bar
+    global rounded_avatar
+    from ui_theme import rounded_avatar
     root = tk.Tk()
+    _set_window_icon(root)
+    apply_theme(root)
     TranslatorGui(root)
+    blend_title_bar(root, icon_path())
     root.mainloop()
     return 0
 

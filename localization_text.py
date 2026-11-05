@@ -8,8 +8,9 @@ import unicodedata
 
 MARKUP_RE = re.compile(r"<[^>]*>")
 PLACEHOLDER_RE = re.compile(r"\{[^{}]*\}|%[sd]")
-NUMBER_RE = re.compile(r"\d+(?:\.\d+)?")
+NUMBER_RE = re.compile(r"\d+(?:\.\d+)?%?")
 EDGE_SYMBOLS = " \t\r\n.,:;!?…·•>＜<|-_~*"
+OCR_NARROW_FORMS = str.maketrans("％（）", "%()")
 
 
 def normalize_text(text: str) -> str:
@@ -22,11 +23,15 @@ def mask_numbers(text: str) -> str:
     return NUMBER_RE.sub("#", PLACEHOLDER_RE.sub("#", text))
 
 
+def fold_text(text: str) -> str:
+    """Compare form: no markup, line breaks or spacing, and full-width characters narrowed."""
+    folded = unicodedata.normalize("NFKC", normalize_text(text)).replace("\\n", "")
+    return "".join(folded.split())
+
+
 def loose_key(text: str) -> str:
     """Key that survives OCR differences: spacing, full-width forms, edge symbols, numbers."""
-    folded = unicodedata.normalize("NFKC", normalize_text(text))
-    folded = "".join(folded.split())
-    return mask_numbers(folded).strip(EDGE_SYMBOLS)
+    return mask_numbers(fold_text(text)).strip(EDGE_SYMBOLS)
 
 
 def fill_numbers(template: str, source_text: str) -> str | None:
