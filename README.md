@@ -73,7 +73,7 @@ cd atkr-android
 .\gradlew.bat assembleDebug
 ```
 
-APK는 `app/build/outputs/apk/debug/app-debug.apk`에 만들어집니다.
+APK는 `app/build/outputs/apk/debug/ArknightsScreenTranslator.apk`에 만들어집니다.
 
 ## 저작권 안내
 

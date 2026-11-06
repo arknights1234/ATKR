@@ -33,6 +33,12 @@ android {
     buildFeatures {
         buildConfig = true
     }
+
+    applicationVariants.all {
+        outputs.all {
+            (this as com.android.build.gradle.internal.api.BaseVariantOutputImpl).outputFileName = "ArknightsScreenTranslator.apk"
+        }
+    }
 }
 
 // The dictionary and font are the PC app's files, so there is one copy of each in the repository.

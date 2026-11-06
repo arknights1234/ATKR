@@ -10,13 +10,15 @@
     <application
         android:allowBackup="false"
         android:largeHeap="true"
-        android:icon="@mipmap/ic_launcher"
+        android:icon="@mipmap/ic_app"
         android:label="@string/app_name"
         android:theme="@style/AppTheme">
 
+        <!-- File apps show the application icon and may not read an adaptive one, so that is a PNG. -->
         <activity
             android:name=".MainActivity"
-            android:exported="true">
+            android:exported="true"
+            android:icon="@mipmap/ic_launcher">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
