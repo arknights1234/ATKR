@@ -1,6 +1,6 @@
 # 명일방주 화면 번역기
 
-명일방주 중국 서버 화면을 캡처해 PaddleOCR로 중국어를 읽고, 한국 서버 공식 번역이 있으면 그 번역을, 없으면 DeepL 번역을 게임 창 위에 표시하는 Windows 앱입니다.
+명일방주 중국 서버 화면을 캡처해 PaddleOCR로 중국어를 읽고, 한국 서버 공식 번역이 있으면 그 번역을, 없으면 DeepL 번역을 게임 창 위에 표시합니다. [Windows](#사용법)와 [Android](#모바일-android)에서 쓸 수 있고, 같은 사전을 공유합니다.
 
 ## 사용법
 
@@ -14,6 +14,21 @@
 | Ctrl+Shift+S | 오버레이를 종료합니다. |
 
 사전이나 캐시에 있는 문구만 있는 화면은 DeepL API 키 없이도 번역됩니다. 처음 OCR을 실행할 때 모델(약 130 MB)을 한 번 내려받습니다.
+
+## 모바일 (Android)
+
+게임을 하다가 스크린샷을 찍으면 그 화면을 번역해 전체 화면으로 띄워 주는 앱입니다.
+
+1. [Releases](https://github.com/arknights1234/ATKR/releases)에서 APK를 받아 설치합니다. 스토어 앱이 아니므로 설치할 때 출처를 알 수 없는 앱을 허용해야 합니다.
+2. 앱을 열고 DeepL API 키를 입력합니다. **API 키를 이 기기에 암호화해 저장**을 켜면 다음부터 다시 입력하지 않아도 됩니다.
+3. 안내에 따라 사진, 알림, **다른 앱 위에 표시** 권한을 허용합니다.
+4. **번역 시작**을 누르고 게임으로 돌아갑니다.
+5. 볼륨 내리기 + 전원 버튼으로 스크린샷을 찍습니다. 잠시 뒤 번역된 화면이 뜨고, 터치하면 닫힙니다.
+
+- 번역을 켜 둔 동안에는 다른 앱에서 찍은 스크린샷도 번역합니다. 쓰지 않을 때는 **번역 중지**나 알림의 종료를 누르세요.
+- 시작 후 첫 번역은 모델을 불러오느라 조금 더 걸립니다. 글자 인식 모델은 앱에 들어 있어 따로 내려받지 않습니다.
+- 찍은 스크린샷은 갤러리에 그대로 남습니다. 앱은 번역 결과를 파일로 저장하지 않습니다.
+- 사전 업데이트와 [DeepL 용어집](#deepl-용어집)은 Windows 앱과 같습니다. 용어집은 계정에 저장되므로 Windows에서 등록했다면 같은 API 키로 바로 적용됩니다.
 
 ## 번역 순서
 
@@ -39,7 +54,7 @@
 
 ## 사전 업데이트
 
-GUI의 **업데이트 확인**을 누르면 이 저장소 `main` 브랜치의 `data/runtime_dictionary.sqlite3`를 확인하고, 내용이 다르면 내려받아 검증한 뒤 적용합니다.
+GUI의 **업데이트 확인**을 누르면 이 저장소 `main` 브랜치의 `data/runtime_dictionary.sqlite3`를 확인하고, 내용이 다르면 내려받아 검증한 뒤 적용합니다. Windows 앱과 Android 앱 모두 같은 파일을 받습니다. Android에서는 받을 때 약 65 MB의 데이터를 쓰고, 다음 번역부터 새 사전이 적용됩니다.
 
 ## 소스에서 실행
 
@@ -51,12 +66,23 @@ python -m venv .
 .\Scripts\python.exe translator_app.py
 ```
 
+Android 앱은 [atkr-android](atkr-android) 폴더에 있습니다. JDK 17과 Android SDK(API 34)가 필요하고, 사전과 폰트는 빌드할 때 `data/`와 `font/`에서 가져옵니다.
+
+```powershell
+cd atkr-android
+.\gradlew.bat assembleDebug
+```
+
+APK는 `app/build/outputs/apk/debug/app-debug.apk`에 만들어집니다.
+
 ## 저작권 안내
 
 이 프로젝트는 비공식 팬 프로젝트이며 Hypergryph, Yostar 등 명일방주(Arknights)의 권리자와 관련이 없습니다.
 
 명일방주의 명칭, 게임 내 텍스트, 번역문을 비롯한 게임 관련 저작물의 권리는 각 권리자에게 있습니다. 런타임 사전과 DeepL 용어집에 포함된 게임 텍스트는 화면 번역 기능을 위한 비상업적 용도로만 사용합니다. 권리자의 요청이 있으면 해당 내용을 삭제합니다.
 
-## 폰트 라이선스
+## 폰트와 모델 라이선스
 
 번역 표시에 사용하는 Noto Sans CJK 폰트는 SIL Open Font License 1.1을 따릅니다. 라이선스 전문은 [font/LICENSE.txt](font/LICENSE.txt)에 있습니다.
+
+Android 앱의 글자 인식 모델은 [PaddleOCR](https://github.com/PaddlePaddle/PaddleOCR)의 PP-OCRv5 모델을 ONNX 형식으로 변환한 것이며, Apache License 2.0을 따릅니다.

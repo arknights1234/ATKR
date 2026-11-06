@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- The same soft white palette as the PC app's ui_theme.py. -->
+    <color name="window_bg">#FFFFFF</color>
+    <color name="border">#E4E4E4</color>
+    <color name="border_focus">#A8A8A8</color>
+    <color name="text">#1E1E1E</color>
+    <color name="muted">#7B7B7B</color>
+    <color name="primary">#262626</color>
+    <color name="primary_pressed">#414141</color>
+    <color name="disabled_bg">#E9E9E9</color>
+    <color name="disabled_text">#ABABAB</color>
+    <color name="pressed_bg">#EBEBEB</color>
+    <color name="toggle_off">#D8D8D8</color>
+</resources>

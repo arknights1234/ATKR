@@ -23,3 +23,18 @@
 !data/
 !data/runtime_dictionary.sqlite3
 !data/glossary_arknights_glossary_v3.csv
+
+# Android app. Its dictionary and font come from data/ and font/ at build time.
+!atkr-android/
+!atkr-android/build.gradle.kts
+!atkr-android/settings.gradle.kts
+!atkr-android/gradle.properties
+!atkr-android/gradlew
+!atkr-android/gradlew.bat
+!atkr-android/gradle/
+!atkr-android/gradle/**
+!atkr-android/app/
+!atkr-android/app/build.gradle.kts
+!atkr-android/app/src/
+!atkr-android/app/src/main/
+!atkr-android/app/src/main/**

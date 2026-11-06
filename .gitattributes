@@ -1,2 +1,8 @@
 *.sqlite3 binary
 *.otf binary
+*.onnx binary
+*.png binary
+*.jar binary
+atkr-android/gradlew text eol=lf
+atkr-android/gradlew.bat text eol=crlf
+atkr-android/app/src/main/assets/dict.txt -text
