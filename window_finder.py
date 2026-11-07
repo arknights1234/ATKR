@@ -77,13 +77,9 @@ _OCR_ENGINE = None
 
 
 def shutdown_ocr_engine() -> None:
-    """Release PaddleX resources on the same persistent worker that created them."""
+    """Release the OCR sessions, and with them the GPU memory."""
     global _OCR_ENGINE
-    engine, _OCR_ENGINE = _OCR_ENGINE, None
-    if engine is not None:
-        close = getattr(engine, "close", None)
-        if callable(close):
-            close()
+    _OCR_ENGINE = None
 
 
 class BITMAPINFOHEADER(ctypes.Structure):
@@ -248,50 +244,35 @@ def capture_window(window: Window, output: Path) -> tuple[int, int]:
     return width, height
 
 
+def prepare_ocr_engine(width: int, height: int) -> None:
+    """Load and warm up the OCR ahead of the first request, on the thread that will run it."""
+    global _OCR_ENGINE
+    from onnx_ocr import OnnxOcr
+
+    if _OCR_ENGINE is None:
+        _OCR_ENGINE = OnnxOcr()
+    _OCR_ENGINE.warm_up(width, height)
+
+
 def recognize_text(image: Path | str | np.ndarray) -> list[dict]:
     """Run local Simplified Chinese OCR on an image path or in-memory BGR array."""
     global _OCR_ENGINE
     try:
-        from paddleocr import PaddleOCR
+        import cv2
+        from onnx_ocr import OnnxOcr
     except ImportError as error:
         raise RuntimeError(
-            "PaddleOCR가 설치되어 있지 않습니다. PaddlePaddle과 PaddleOCR 3.x를 "
+            "OCR 실행 패키지가 설치되어 있지 않습니다. requirements-ocr.txt를 "
             "설치한 뒤 다시 실행해 주세요. 현재 Python은 "
             f"{sys.version_info.major}.{sys.version_info.minor}입니다."
         ) from error
 
     if _OCR_ENGINE is None:
-        _OCR_ENGINE = PaddleOCR(
-            lang="ch",
-            text_detection_model_name="PP-OCRv6_medium_det",
-            text_recognition_model_name="PP-OCRv6_medium_rec",
-            use_doc_orientation_classify=False,
-            use_doc_unwarping=False,
-            use_textline_orientation=False,
-        )
-    ocr_input = str(image) if isinstance(image, (str, Path)) else image
-    results = _OCR_ENGINE.predict(ocr_input)
-    detections: list[dict] = []
-    for result in results:
-        payload = result.json
-        if callable(payload):
-            payload = payload()
-        if isinstance(payload, str):
-            payload = json.loads(payload)
-        data = payload.get("res", payload) if isinstance(payload, dict) else {}
-        texts = data.get("rec_texts", [])
-        scores = data.get("rec_scores", [])
-        boxes = data.get("rec_polys", data.get("rec_boxes", []))
-        for index, text in enumerate(texts):
-            text = str(text).strip()
-            if not text:
-                continue
-            box = boxes[index] if index < len(boxes) else []
-            if hasattr(box, "tolist"):
-                box = box.tolist()
-            score = float(scores[index]) if index < len(scores) else None
-            detections.append({"text": text, "score": score, "box": box})
-    return detections
+        _OCR_ENGINE = OnnxOcr()
+    if isinstance(image, (str, Path)):
+        # imdecode because imread cannot open a path with Korean characters on Windows.
+        image = cv2.imdecode(np.fromfile(str(image), np.uint8), cv2.IMREAD_COLOR)
+    return _OCR_ENGINE.recognize(image)
 
 
 def _watch(window: Window) -> None:
@@ -367,7 +348,7 @@ def main() -> int:
         except (ImportError, RuntimeError, OSError, ValueError) as error:
             print(f"OCR 실행 실패: {error}")
             if "설치되어 있지 않습니다" in str(error):
-                print("설치 안내: requirements-ocr.txt와 PaddlePaddle 설치 안내를 확인하세요.")
+                print("설치 안내: requirements-ocr.txt를 확인하세요.")
             return 1
 
         result_path = output.with_suffix(".json")

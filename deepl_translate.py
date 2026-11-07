@@ -1,18 +1,91 @@
-"""Translate text or PaddleOCR JSON output with the DeepL API."""
+"""Translate text or OCR JSON output with the DeepL API."""
 
 from __future__ import annotations
 
 import argparse
+import http.client
 import json
 import os
+import select
 import sys
+import threading
 from pathlib import Path
-from urllib.error import HTTPError, URLError
-from urllib.request import Request, urlopen
 
 from net import https_context
 
 GLOSSARY_LOOKUP_TIMEOUT = 8
+TRANSLATE_TIMEOUT = 30
+
+# DeepL closes an idle connection within about 30 seconds, so one kept here may already be gone.
+_connections: dict[str, http.client.HTTPSConnection] = {}
+_connections_lock = threading.Lock()
+
+
+def _api_host(auth_key: str) -> str:
+    return "api-free.deepl.com" if auth_key.endswith(":fx") else "api.deepl.com"
+
+
+def _drop_connection(host: str) -> None:
+    connection = _connections.pop(host, None)
+    if connection is not None:
+        connection.close()
+
+
+def _new_connection(host: str, timeout: float) -> http.client.HTTPSConnection:
+    _drop_connection(host)
+    connection = http.client.HTTPSConnection(host, timeout=timeout, context=https_context())
+    _connections[host] = connection
+    return connection
+
+
+def prepare_connection(auth_key: str) -> None:
+    """Open the connection ahead of a request, sparing it the handshake. A failure surfaces in the request."""
+    host = _api_host(auth_key)
+    with _connections_lock:
+        connection = _connections.get(host)
+        if connection is not None and connection.sock is not None:
+            # An idle socket only turns readable when the server has closed it.
+            if not select.select([connection.sock], [], [], 0)[0]:
+                return
+        try:
+            _new_connection(host, TRANSLATE_TIMEOUT).connect()
+        except (OSError, http.client.HTTPException):
+            _drop_connection(host)
+
+
+def _exchange(connection: http.client.HTTPSConnection, method: str, path: str, body: bytes | None, headers: dict[str, str], timeout: float) -> tuple[int, bytes]:
+    connection.timeout = timeout
+    if connection.sock is not None:
+        connection.sock.settimeout(timeout)
+    connection.request(method, path, body=body, headers=headers)
+    response = connection.getresponse()
+    data = response.read()
+    if response.will_close:
+        connection.close()
+    return response.status, data
+
+
+def _request(auth_key: str, method: str, path: str, body: bytes | None, timeout: float) -> tuple[int, bytes]:
+    """One API call on the kept connection, opening a new one if the server has closed it."""
+    host = _api_host(auth_key)
+    headers = {"Authorization": f"DeepL-Auth-Key {auth_key}"}
+    if body is not None:
+        headers["Content-Type"] = "application/json"
+    with _connections_lock:
+        kept = _connections.get(host)
+        if kept is not None:
+            try:
+                return _exchange(kept, method, path, body, headers, timeout)
+            except TimeoutError:
+                _drop_connection(host)
+                raise
+            except (OSError, http.client.HTTPException):
+                _drop_connection(host)
+        try:
+            return _exchange(_new_connection(host, timeout), method, path, body, headers, timeout)
+        except (OSError, http.client.HTTPException):
+            _drop_connection(host)
+            raise
 
 
 def translate(texts: list[str], auth_key: str, source_lang: str, target_lang: str, **options) -> list[dict]:
@@ -20,33 +93,20 @@ def translate(texts: list[str], auth_key: str, source_lang: str, target_lang: st
 
     ``options`` are passed through to the API, e.g. context, tag_handling, ignore_tags.
     """
-    api_host = "api-free.deepl.com" if auth_key.endswith(":fx") else "api.deepl.com"
-    url = f"https://{api_host}/v2/translate"
     body = json.dumps({
         "text": texts,
         "source_lang": source_lang,
         "target_lang": target_lang,
         **options,
     }, ensure_ascii=False).encode("utf-8")
-    request = Request(
-        url,
-        data=body,
-        headers={
-            "Authorization": f"DeepL-Auth-Key {auth_key}",
-            "Content-Type": "application/json",
-        },
-        method="POST",
-    )
     try:
-        with urlopen(request, timeout=30, context=https_context()) as response:
-            result = json.loads(response.read().decode("utf-8"))
-    except HTTPError as error:
-        details = error.read().decode("utf-8", errors="replace")
-        raise RuntimeError(f"DeepL API 오류 (HTTP {error.code}): {details}") from error
-    except URLError as error:
-        raise RuntimeError(f"DeepL API에 연결하지 못했습니다: {error.reason}") from error
+        status, data = _request(auth_key, "POST", "/v2/translate", body, TRANSLATE_TIMEOUT)
+    except (OSError, http.client.HTTPException) as error:
+        raise RuntimeError(f"DeepL API에 연결하지 못했습니다: {error}") from error
+    if status != 200:
+        raise RuntimeError(f"DeepL API 오류 (HTTP {status}): {data.decode('utf-8', errors='replace')}")
 
-    translations = result.get("translations")
+    translations = json.loads(data.decode("utf-8")).get("translations")
     if not isinstance(translations, list) or len(translations) != len(texts):
         raise RuntimeError("DeepL 응답의 번역 개수가 요청한 문장 수와 다릅니다.")
     return translations
@@ -54,10 +114,13 @@ def translate(texts: list[str], auth_key: str, source_lang: str, target_lang: st
 
 def find_glossary_id(auth_key: str, name_prefix: str, source_lang: str, target_lang: str) -> str | None:
     """Newest ready glossary on this key's account, or None. Glossaries belong to one account."""
-    api_host = "api-free.deepl.com" if auth_key.endswith(":fx") else "api.deepl.com"
-    request = Request(f"https://{api_host}/v2/glossaries", headers={"Authorization": f"DeepL-Auth-Key {auth_key}"})
-    with urlopen(request, timeout=GLOSSARY_LOOKUP_TIMEOUT, context=https_context()) as response:
-        glossaries = json.loads(response.read().decode("utf-8")).get("glossaries", [])
+    try:
+        status, data = _request(auth_key, "GET", "/v2/glossaries", None, GLOSSARY_LOOKUP_TIMEOUT)
+    except http.client.HTTPException as error:
+        raise OSError(str(error)) from error
+    if status != 200:
+        raise OSError(f"HTTP {status}")
+    glossaries = json.loads(data.decode("utf-8")).get("glossaries", [])
     usable = [
         item for item in glossaries
         if str(item.get("name", "")).startswith(name_prefix) and item.get("ready")

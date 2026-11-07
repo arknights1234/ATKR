@@ -13,7 +13,7 @@
 | Ctrl+S | 게임 창을 맨 앞으로 가져와 현재 화면을 번역합니다. 번역 중에는 정지 화면에 파란 테두리가 표시되고, 끝나면 결과로 바뀝니다. 결과가 떠 있을 때나 번역 중에 다시 누르면 닫습니다. |
 | Ctrl+Shift+S | 오버레이를 종료합니다. |
 
-사전이나 캐시에 있는 문구만 있는 화면은 DeepL API 키 없이도 번역됩니다. 처음 OCR을 실행할 때 모델(약 130 MB)을 한 번 내려받습니다.
+사전이나 캐시에 있는 문구만 있는 화면은 DeepL API 키 없이도 번역됩니다. 글자 인식 모델은 배포본에 들어 있어 따로 내려받지 않습니다. 글자 인식에는 GPU를 쓰고(DirectML, VRAM 약 2 GB), GPU를 쓸 수 없으면 CPU로 전환합니다.
 
 ## 모바일 (Android)
 
@@ -66,6 +66,8 @@ python -m venv .
 .\Scripts\python.exe translator_app.py
 ```
 
+글자 인식 모델은 저장소의 `models` 폴더에 있습니다.
+
 Android 앱은 [atkr-android](atkr-android) 폴더에 있습니다. JDK 17과 Android SDK(API 34)가 필요하고, 사전과 폰트는 빌드할 때 `data/`와 `font/`에서 가져옵니다.
 
 ```powershell
@@ -85,4 +87,4 @@ APK는 `app/build/outputs/apk/debug/ArknightsScreenTranslator.apk`에 만들어�
 
 번역 표시에 사용하는 Noto Sans CJK 폰트는 SIL Open Font License 1.1을 따릅니다. 라이선스 전문은 [font/LICENSE.txt](font/LICENSE.txt)에 있습니다.
 
-Android 앱의 글자 인식 모델은 [PaddleOCR](https://github.com/PaddlePaddle/PaddleOCR)의 PP-OCRv5 모델을 ONNX 형식으로 변환한 것이며, Apache License 2.0을 따릅니다.
+글자 인식 모델은 [PaddleOCR](https://github.com/PaddlePaddle/PaddleOCR)의 모델(Windows는 PP-OCRv6 medium, Android는 PP-OCRv5 mobile)을 ONNX 형식으로 변환한 것이며, Apache License 2.0을 따릅니다.

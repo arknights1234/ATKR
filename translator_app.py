@@ -32,7 +32,7 @@ from window_finder import Window, find_windows
 
 
 def _hide_subprocess_consoles() -> None:
-    """Stop console tools run by libraries (Paddle's `where ccache`) from flashing a window.
+    """Stop console tools run by libraries from flashing a window.
 
     A windowed executable has no console, so each console child would open its own.
     """

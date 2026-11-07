@@ -21,8 +21,9 @@ import cv2
 import numpy as np
 
 from app_paths import active_runtime_dictionary_path, runtime_dictionary_path, translation_cache_path
-from deepl_translate import find_glossary_id, translate
+from deepl_translate import find_glossary_id, prepare_connection, translate
 from localization_text import EDGE_SYMBOLS, OCR_NARROW_FORMS, PLACEHOLDER_RE, fill_numbers, fold_text, loose_key, normalize_text
+from net import https_context
 from window_finder import (
     BITMAPINFO,
     BITMAPINFOHEADER,
@@ -30,6 +31,7 @@ from window_finder import (
     Window,
     capture_window_image,
     find_windows,
+    prepare_ocr_engine,
     recognize_text,
     shutdown_ocr_engine,
 )
@@ -509,6 +511,10 @@ def account_glossary_id(auth_key: str) -> str | None:
 
 def make_translation_job(captured_image: np.ndarray, auth_key: str | None = None) -> tuple[Image.Image, list[dict]]:
     captured = time.perf_counter()
+    auth_key = (auth_key or os.environ.get("DEEPL_AUTH_KEY", "")).strip()
+    if auth_key:
+        # OCR outlasts the handshake, so DeepL's connection is ready when the text is.
+        threading.Thread(target=prepare_connection, args=(auth_key,), daemon=True).start()
     detections = recognize_text(np.ascontiguousarray(captured_image[:, :, :3]))
     raw_detection_count = len(detections)
     detections = group_wrapped_lines(filter_ocr_noise(detections))
@@ -531,7 +537,6 @@ def make_translation_job(captured_image: np.ndarray, auth_key: str | None = None
     request_texts: list[str] = []
     request_cache_keys: list[str] = []
     dictionary_hits = cache_hits = protected_term_count = 0
-    auth_key = (auth_key or os.environ.get("DEEPL_AUTH_KEY", "")).strip()
     glossary_id = None
     glossary_checked = False
     for index, detection in enumerate(detections):
@@ -1379,7 +1384,27 @@ class ScreenTranslator:
         self._position(show=True)
         self.foreground_when_shown = user32.GetForegroundWindow()
 
+    def _prepare_ocr(self) -> None:
+        """Spare the first translation the model load. A failure is reported when one runs."""
+        started = time.perf_counter()
+        try:
+            rect = client_rect_on_screen(self.hwnd)
+            if rect is not None:
+                prepare_ocr_engine(rect[2], rect[3])
+                print(f"처리 시간 - OCR 준비 {time.perf_counter()-started:.2f}s", flush=True)
+        except Exception as error:
+            print(f"OCR 미리 준비 실패: {error}", flush=True)
+
+    def _prepare_deepl(self) -> None:
+        """Spare the first DeepL request its setup. A failed lookup is retried when one runs."""
+        https_context()
+        auth_key = os.environ.get("DEEPL_AUTH_KEY", "").strip()
+        if auth_key:
+            account_glossary_id(auth_key)
+
     def _translation_worker_loop(self) -> None:
+        self._prepare_ocr()
+        self._prepare_deepl()
         while (frame := self.translation_requests.get()) is not None:
             try:
                 event = ("result", True, make_translation_job(frame))

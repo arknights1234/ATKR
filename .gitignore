@@ -11,6 +11,7 @@
 !dictionary_updater.py
 !localization_text.py
 !net.py
+!onnx_ocr.py
 !screen_translator.py
 !secure_settings.py
 !translator_app.py
@@ -23,6 +24,11 @@
 !data/
 !data/runtime_dictionary.sqlite3
 !data/glossary_arknights_glossary_v3.csv
+!models/
+!models/det.onnx
+!models/rec.onnx
+!models/rec_dict.txt
+!models/LICENSE.txt
 
 # Android app. Its dictionary and font come from data/ and font/ at build time.
 !atkr-android/
