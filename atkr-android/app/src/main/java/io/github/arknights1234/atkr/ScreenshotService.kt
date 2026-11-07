@@ -19,6 +19,7 @@ import android.os.IBinder
 import android.os.Looper
 import android.os.SystemClock
 import android.provider.MediaStore
+import android.util.Log
 import android.view.Gravity
 import android.view.View
 import android.view.WindowManager
@@ -64,6 +65,8 @@ class ScreenshotService : Service() {
             // Screenshots taken before starting are not translated.
             lastId = newestScreenshot()?.first ?: -1L
             contentResolver.registerContentObserver(images, true, observer)
+            // Loading now spares the first translation the wait. A failure is reported when one runs.
+            runCatching { loadEngines() }.onFailure { Log.w(TAG, "엔진 미리 불러오기 실패: $it") }
         }
     }
 
@@ -250,8 +253,10 @@ class ScreenshotService : Service() {
         private const val ACTION_STOP = "io.github.arknights1234.atkr.STOP"
         private const val CHANNEL = "panel"
         private const val NOTIFICATION_ID = 1
-        private const val DECODE_ATTEMPTS = 5
-        private const val DECODE_RETRY_MS = 300L
+        private const val TAG = "ScreenshotService"
+        // Waits up to 1.2 seconds for the file, checking often so a ready file is not left waiting.
+        private const val DECODE_ATTEMPTS = 25
+        private const val DECODE_RETRY_MS = 50L
         private const val SAME_LINE_OVERLAP_SHARE = 0.25
 
         /** A key the user chose not to save; it lasts until the app process ends. */

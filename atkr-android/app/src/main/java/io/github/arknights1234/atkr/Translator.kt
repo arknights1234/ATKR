@@ -27,7 +27,7 @@ class Translator(context: Context, private val dictionary: Dictionary, private v
         val pending = ArrayList<Detection>()
         var dictionaryHits = 0
         var cacheHits = 0
-        if (apiKey != null && !glossaryChecked) lookUpGlossary(apiKey)
+        var glossaryTried = false
         for (item in detections) {
             val text = normalizeText(item.text)
             item.translation = text
@@ -37,6 +37,11 @@ class Translator(context: Context, private val dictionary: Dictionary, private v
                 item.translation = found
                 dictionaryHits++
                 continue
+            }
+            // Only text outside the dictionary needs DeepL, and the cache key depends on the glossary.
+            if (apiKey != null && !glossaryChecked && !glossaryTried) {
+                glossaryTried = true
+                lookUpGlossary(apiKey)
             }
             val cached = cache.optString(cacheKey(text, glossaryId != null), "")
             if (cached.isNotEmpty()) {
