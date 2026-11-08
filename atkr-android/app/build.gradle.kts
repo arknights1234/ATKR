@@ -1,18 +1,7 @@
-import java.io.File
-import java.util.Properties
-
 plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.android")
 }
-
-fun readProperties(file: File): Properties = Properties().apply { file.reader().use { reader -> load(reader) } }
-
-// The release key stays outside the repository. local.properties (not committed) names its
-// properties file as atkr.signing=...; without it a release build falls back to the debug key.
-val signingFile: File? = rootDir.resolve("local.properties").takeIf { it.isFile }
-    ?.let { readProperties(it).getProperty("atkr.signing") }
-    ?.let { File(it) }?.takeIf { it.isFile }
 
 android {
     namespace = "io.github.arknights1234.atkr"
@@ -44,24 +33,6 @@ android {
     }
     buildFeatures {
         buildConfig = true
-    }
-
-    signingConfigs {
-        if (signingFile != null) {
-            create("release") {
-                val signing = readProperties(signingFile)
-                storeFile = File(signing.getProperty("storeFile"))
-                storePassword = signing.getProperty("storePassword")
-                keyAlias = signing.getProperty("keyAlias")
-                keyPassword = signing.getProperty("keyPassword")
-            }
-        }
-    }
-    buildTypes {
-        getByName("release") {
-            isMinifyEnabled = false
-            signingConfig = signingConfigs.findByName("release") ?: signingConfigs.getByName("debug")
-        }
     }
 
     applicationVariants.all {

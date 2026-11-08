@@ -28,7 +28,6 @@
 - 번역을 켜 둔 동안에는 다른 앱에서 찍은 스크린샷도 번역합니다. 쓰지 않을 때는 **번역 중지**나 알림의 종료를 누르세요.
 - 시작 후 첫 번역은 모델을 불러오느라 조금 더 걸립니다. 글자 인식 모델은 앱에 들어 있어 따로 내려받지 않습니다.
 - 찍은 스크린샷은 갤러리에 그대로 남습니다. 앱은 번역 결과를 파일로 저장하지 않습니다.
-- 1.0.5부터 배포 APK의 서명이 바뀌었습니다. 1.0.4 이하를 설치했다면 앱을 한 번 삭제한 뒤 설치하세요. 삭제하면 저장한 API 키와 번역 캐시도 지워집니다.
 - 사전 업데이트와 [DeepL 용어집](#deepl-용어집)은 Windows 앱과 같습니다. 용어집은 계정에 저장되므로 Windows에서 등록했다면 같은 API 키로 바로 적용됩니다.
 
 ## 번역 순서
@@ -77,8 +76,6 @@ cd atkr-android
 ```
 
 APK는 `app/build/outputs/apk/debug/ArknightsScreenTranslator.apk`에 만들어집니다.
-
-배포용 APK는 `.\gradlew.bat assembleRelease`로 만들고 `app/build/outputs/apk/release/`에 생깁니다. 서명 키는 저장소에 없고, `atkr-android/local.properties`(커밋하지 않음)의 `atkr.signing=` 줄에 서명 정보 파일(`storeFile`, `storePassword`, `keyAlias`, `keyPassword`) 경로를 적으면 그 키로 서명합니다. 없으면 디버그 키로 서명합니다.
 
 ## 저작권 안내
 
