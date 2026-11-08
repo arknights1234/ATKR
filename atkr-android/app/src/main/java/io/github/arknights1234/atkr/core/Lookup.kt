@@ -10,7 +10,8 @@ interface DictionaryStore {
     fun startingWith(prefix: String, limit: Int): List<Pair<String, String>>
 }
 
-private val MARKUP = Regex("<[^>]*>")
+// Same as MARKUP_RE in localization_text.py: tags hold no CJK, so <休整期结束时> stays.
+private val MARKUP = Regex("<[^<>\u3040-\u30ff\u3400-\u9fff\uac00-\ud7af]*>")
 val PLACEHOLDER = Regex("""\{[^{}]*\}|%[sd]""")
 private val NUMBER = Regex("""[0-9]+(?:\.[0-9]+)?%?""")
 private const val EDGE_SYMBOLS = " \t\r\n.,:;!?…·•>＜<|-_~*"

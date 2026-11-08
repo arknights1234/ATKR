@@ -6,7 +6,10 @@ import re
 import unicodedata
 
 
-MARKUP_RE = re.compile(r"<[^>]*>")
+# Markup tags such as <@ba.vup> and </> hold no CJK text. Brackets around words, such as
+# <休整期结束时>, are shown in the game as written, so they stay.
+MARKUP_RE = re.compile(r"<[^<>\u3040-\u30ff\u3400-\u9fff\uac00-\ud7af]*>")
+ANY_BRACKET_RE = re.compile(r"<[^>]*>")
 PLACEHOLDER_RE = re.compile(r"\{[^{}]*\}|%[sd]")
 NUMBER_RE = re.compile(r"\d+(?:\.\d+)?%?")
 EDGE_SYMBOLS = " \t\r\n.,:;!?…·•>＜<|-_~*"
@@ -16,6 +19,11 @@ OCR_NARROW_FORMS = str.maketrans("％（）", "%()")
 def normalize_text(text: str) -> str:
     """Remove inline presentation tags such as <@ro.get> and </>."""
     return MARKUP_RE.sub("", text).strip()
+
+
+def strip_all_brackets(text: str) -> str:
+    """The form older versions used, which also dropped bracketed words such as <休整期结束时>."""
+    return ANY_BRACKET_RE.sub("", text).strip()
 
 
 def mask_numbers(text: str) -> str:
