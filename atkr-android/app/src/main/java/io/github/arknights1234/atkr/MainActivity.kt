@@ -2,6 +2,7 @@ package io.github.arknights1234.atkr
 
 import android.Manifest
 import android.app.Activity
+import android.app.AlertDialog
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.net.Uri
@@ -26,6 +27,11 @@ class MainActivity : Activity() {
     private lateinit var grantOverlay: Button
     private lateinit var dictionaryStatus: TextView
     private lateinit var updateButton: Button
+    private lateinit var glossaryStatus: TextView
+    private lateinit var glossaryButton: Button
+    private lateinit var appStatus: TextView
+    private lateinit var releaseButton: Button
+    private var releaseUrl = DictionaryUpdater.RELEASES_URL
 
     private val runtimePermissions = arrayOf(Manifest.permission.POST_NOTIFICATIONS, Manifest.permission.READ_MEDIA_IMAGES)
 
@@ -66,6 +72,83 @@ class MainActivity : Activity() {
         updateButton = findViewById(R.id.update_dictionary)
         updateButton.setOnClickListener { updateDictionary() }
         dictionaryStatus.text = "현재 버전: ${Dictionary.versionLabel(this)}"
+        glossaryStatus = findViewById(R.id.glossary_status)
+        glossaryButton = findViewById(R.id.upload_glossary)
+        glossaryButton.setOnClickListener { confirmGlossaryUpload() }
+        appStatus = findViewById(R.id.app_status)
+        releaseButton = findViewById(R.id.open_release)
+        appStatus.text = "현재 ${BuildConfig.VERSION_NAME} · 새 버전 확인 중"
+        releaseButton.setOnClickListener { startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(releaseUrl))) }
+        checkUpdates()
+    }
+
+    /** Asks GitHub once per screen whether a newer app release or dictionary exists. Nothing is downloaded. */
+    private fun checkUpdates() {
+        val appContext = applicationContext
+        Thread {
+            val release = runCatching { DictionaryUpdater.latestRelease() }.getOrNull()
+            val dictionary = runCatching { DictionaryUpdater.updateAvailable(appContext) }.getOrNull()
+            runOnUiThread {
+                if (isDestroyed) return@runOnUiThread
+                val current = BuildConfig.VERSION_NAME
+                appStatus.text = when {
+                    release == null -> "현재 $current · 새 버전 확인 실패"
+                    DictionaryUpdater.versionNewer(release.version, current) -> {
+                        releaseUrl = release.url
+                        highlight(releaseButton, "새 버전 받기")
+                        "현재 $current · 새 버전 ${release.tag}이 있습니다"
+                    }
+                    else -> "현재 $current · 최신 버전"
+                }
+                // A download the user already started reports its own result.
+                if (dictionary != null && dictionary.second && updateButton.isEnabled) {
+                    dictionaryStatus.text = "현재 버전: ${Dictionary.versionLabel(this)} · 새 사전 ${dictionary.first} 있음"
+                    highlight(updateButton, "사전 업데이트")
+                }
+            }
+        }.start()
+    }
+
+    private fun highlight(button: Button, text: String) {
+        button.text = text
+        button.setBackgroundResource(R.drawable.button_primary)
+        button.setTextColor(getColorStateList(R.color.button_primary_text))
+    }
+
+    private fun confirmGlossaryUpload() {
+        val apiKey = keyInput.text.toString().trim()
+        if (apiKey.isEmpty()) {
+            glossaryStatus.text = "DeepL API 키를 먼저 입력하세요."
+            return
+        }
+        AlertDialog.Builder(this)
+            .setTitle("DeepL 용어집 등록")
+            .setMessage(
+                "이 API 키의 DeepL 계정에 명일방주 용어집(중국어→한국어)을 등록합니다.\n" +
+                    "이름이 ${GlossaryUploader.NAME_PREFIX}로 시작하는 이전 용어집은 새 용어집으로 바꿉니다.\n" +
+                    "용어집 등록은 번역 사용량에 포함되지 않습니다."
+            )
+            .setPositiveButton("등록") { _, _ -> uploadGlossary(apiKey) }
+            .setNegativeButton("취소", null)
+            .show()
+    }
+
+    private fun uploadGlossary(apiKey: String) {
+        glossaryButton.isEnabled = false
+        glossaryStatus.text = "DeepL 계정에 용어집을 등록하는 중…"
+        val appContext = applicationContext
+        Thread {
+            val message = runCatching { GlossaryUploader.upload(appContext, apiKey) }.fold(
+                onSuccess = { if (ScreenshotService.running) "$it 번역 중지 후 다시 시작하면 적용됩니다." else it },
+                onFailure = { "용어집 등록 실패: ${it.message}" },
+            )
+            runOnUiThread {
+                if (!isDestroyed) {
+                    glossaryButton.isEnabled = true
+                    glossaryStatus.text = message
+                }
+            }
+        }.start()
     }
 
     private fun updateDictionary() {
@@ -83,6 +166,9 @@ class MainActivity : Activity() {
             runOnUiThread {
                 if (!isDestroyed) {
                     updateButton.isEnabled = true
+                    updateButton.text = "업데이트 확인"
+                    updateButton.setBackgroundResource(R.drawable.button_secondary)
+                    updateButton.setTextColor(getColorStateList(R.color.button_secondary_text))
                     dictionaryStatus.text = message
                 }
             }

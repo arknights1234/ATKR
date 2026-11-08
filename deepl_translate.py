@@ -13,7 +13,10 @@ from pathlib import Path
 
 from net import https_context
 
+# The app uses the newest zh→ko glossary on the account whose name starts with this.
+GLOSSARY_NAME_PREFIX = "arknights_glossary"
 GLOSSARY_LOOKUP_TIMEOUT = 8
+GLOSSARY_UPLOAD_TIMEOUT = 60
 TRANSLATE_TIMEOUT = 30
 
 # DeepL closes an idle connection within about 30 seconds, so one kept here may already be gone.
@@ -112,8 +115,8 @@ def translate(texts: list[str], auth_key: str, source_lang: str, target_lang: st
     return translations
 
 
-def find_glossary_id(auth_key: str, name_prefix: str, source_lang: str, target_lang: str) -> str | None:
-    """Newest ready glossary on this key's account, or None. Glossaries belong to one account."""
+def list_glossaries(auth_key: str, name_prefix: str, source_lang: str, target_lang: str) -> list[dict]:
+    """This key's account glossaries for one language pair whose name starts with name_prefix."""
     try:
         status, data = _request(auth_key, "GET", "/v2/glossaries", None, GLOSSARY_LOOKUP_TIMEOUT)
     except http.client.HTTPException as error:
@@ -121,14 +124,46 @@ def find_glossary_id(auth_key: str, name_prefix: str, source_lang: str, target_l
     if status != 200:
         raise OSError(f"HTTP {status}")
     glossaries = json.loads(data.decode("utf-8")).get("glossaries", [])
-    usable = [
+    return [
         item for item in glossaries
-        if str(item.get("name", "")).startswith(name_prefix) and item.get("ready")
+        if str(item.get("name", "")).startswith(name_prefix)
         and str(item.get("source_lang", "")).upper() == source_lang and str(item.get("target_lang", "")).upper() == target_lang
     ]
+
+
+def find_glossary_id(auth_key: str, name_prefix: str, source_lang: str, target_lang: str) -> str | None:
+    """Newest ready glossary on this key's account, or None. Glossaries belong to one account."""
+    usable = [item for item in list_glossaries(auth_key, name_prefix, source_lang, target_lang) if item.get("ready")]
     if not usable:
         return None
     return max(usable, key=lambda item: str(item.get("creation_time", "")))["glossary_id"]
+
+
+def create_glossary(auth_key: str, name: str, source_lang: str, target_lang: str, entries: list[tuple[str, str]]) -> dict:
+    """Upload a glossary to this key's account. The API limits its size (10 MiB), not its entry count."""
+    body = json.dumps({
+        "name": name,
+        "source_lang": source_lang.lower(),
+        "target_lang": target_lang.lower(),
+        "entries": "\n".join(f"{source}\t{target}" for source, target in entries),
+        "entries_format": "tsv",
+    }, ensure_ascii=False).encode("utf-8")
+    try:
+        status, data = _request(auth_key, "POST", "/v2/glossaries", body, GLOSSARY_UPLOAD_TIMEOUT)
+    except (OSError, http.client.HTTPException) as error:
+        raise RuntimeError(f"DeepL API에 연결하지 못했습니다: {error}") from error
+    if status not in (200, 201):
+        raise RuntimeError(f"DeepL API 오류 (HTTP {status}): {data.decode('utf-8', errors='replace')}")
+    return json.loads(data.decode("utf-8"))
+
+
+def delete_glossary(auth_key: str, glossary_id: str) -> None:
+    try:
+        status, data = _request(auth_key, "DELETE", f"/v2/glossaries/{glossary_id}", None, GLOSSARY_LOOKUP_TIMEOUT)
+    except (OSError, http.client.HTTPException) as error:
+        raise RuntimeError(f"DeepL API에 연결하지 못했습니다: {error}") from error
+    if status not in (200, 204):
+        raise RuntimeError(f"DeepL API 오류 (HTTP {status}): {data.decode('utf-8', errors='replace')}")
 
 
 def read_ocr_json(path: Path) -> tuple[list[str], list[dict]]:

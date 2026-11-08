@@ -7,6 +7,10 @@ from pathlib import Path
 import sys
 
 
+# Matches the GitHub release tag (v1.3.0) and the Android versionName; raise both together.
+APP_VERSION = "1.3.0"
+
+
 def install_dir() -> Path:
     if getattr(sys, "frozen", False):
         return Path(sys.executable).resolve().parent
@@ -37,6 +41,15 @@ def _writable_file(name: str) -> Path:
 
 def icon_path() -> Path:
     return Path(__file__).resolve().parent / "icon" / "app.ico"
+
+
+def glossary_path() -> Path:
+    """DeepL glossary CSV (source, target, source language, target language) shipped with the app."""
+    base = Path(__file__).resolve().parent
+    name = "glossary_arknights_glossary_v3.csv"
+    # The release build bundles it under glossary; a source checkout keeps it in data.
+    bundled = base / "glossary" / name
+    return bundled if bundled.is_file() else base / "data" / name
 
 
 def overlay_log_path() -> Path:

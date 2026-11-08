@@ -57,6 +57,31 @@ def latest_dictionary() -> dict[str, str]:
     }
 
 
+def latest_release() -> dict[str, str]:
+    """Newest published release: version without the leading v, tag and page URL."""
+    release = _get_json(f"https://api.github.com/repos/{PUBLIC_DICTIONARY_REPO}/releases/latest")
+    tag = str(release.get("tag_name", "")) if isinstance(release, dict) else ""
+    if not tag:
+        raise RuntimeError("GitHub 응답에서 릴리스 정보를 읽지 못했습니다.")
+    return {"version": tag.lstrip("vV"), "tag": tag, "url": str(release.get("html_url") or f"https://github.com/{PUBLIC_DICTIONARY_REPO}/releases/latest")}
+
+
+def version_newer(candidate: str, current: str) -> bool:
+    """True when candidate (e.g. 1.3.1) is a later version than current; unreadable parts count as 0."""
+    def parts(version: str) -> list[int]:
+        return [int(piece) if piece.isdigit() else 0 for piece in re.split(r"[.\-+]", version.strip())[:3]]
+    a, b = parts(candidate), parts(current)
+    width = max(len(a), len(b))
+    return a + [0] * (width - len(a)) > b + [0] * (width - len(b))
+
+
+def dictionary_update_available() -> tuple[str, bool]:
+    """(newest tag, whether it differs from the dictionary in use), without downloading it."""
+    latest = latest_dictionary()
+    active = active_runtime_dictionary_path()
+    return latest["tag"], not (active.is_file() and git_blob_sha(active) == latest["blob_sha"])
+
+
 def git_blob_sha(path: Path) -> str:
     """Hash a file the way Git does, which is what GitHub reports for it."""
     digest = hashlib.sha1(f"blob {path.stat().st_size}\0".encode())

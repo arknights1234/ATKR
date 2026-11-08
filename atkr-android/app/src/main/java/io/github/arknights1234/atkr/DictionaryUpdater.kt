@@ -71,6 +71,38 @@ object DictionaryUpdater {
         return digest.digest().joinToString("") { "%02x".format(it) }
     }
 
+    class Release(val tag: String, val version: String, val url: String)
+
+    /** Newest published release of the app, like latest_release in dictionary_updater.py. */
+    fun latestRelease(): Release {
+        val release = JSONObject(getText("https://api.github.com/repos/$REPOSITORY/releases/latest"))
+        val tag = release.optString("tag_name")
+        if (tag.isEmpty()) throw IOException("GitHub 응답에서 릴리스 정보를 읽지 못했습니다")
+        val url = release.optString("html_url").ifEmpty { RELEASES_URL }
+        return Release(tag, tag.trimStart('v', 'V'), url)
+    }
+
+    /** True when candidate (e.g. 1.3.1) is later than current; unreadable parts count as 0. */
+    fun versionNewer(candidate: String, current: String): Boolean {
+        fun parts(version: String) = version.trim().split('.', '-', '+').take(3).map { it.toIntOrNull() ?: 0 }
+        val a = parts(candidate)
+        val b = parts(current)
+        for (index in 0 until maxOf(a.size, b.size)) {
+            val x = a.getOrElse(index) { 0 }
+            val y = b.getOrElse(index) { 0 }
+            if (x != y) return x > y
+        }
+        return false
+    }
+
+    /** (newest tag, whether it differs from the dictionary in use), without downloading it. */
+    fun updateAvailable(context: Context): Pair<String, Boolean> {
+        val target = latest()
+        return target.tag to (gitBlobSha(Dictionary.activeFile(context)) != target.blobSha)
+    }
+
+    const val RELEASES_URL = "https://github.com/$REPOSITORY/releases/latest"
+
     /** Runs on a background thread; throws with a message for the user when it fails. */
     fun update(context: Context): Outcome {
         val target = latest()

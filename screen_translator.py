@@ -21,7 +21,7 @@ import cv2
 import numpy as np
 
 from app_paths import active_runtime_dictionary_path, runtime_dictionary_path, translation_cache_path
-from deepl_translate import find_glossary_id, prepare_connection, translate
+from deepl_translate import GLOSSARY_NAME_PREFIX, find_glossary_id, prepare_connection, translate
 from localization_text import EDGE_SYMBOLS, OCR_NARROW_FORMS, PLACEHOLDER_RE, fill_numbers, fold_text, loose_key, normalize_text
 from net import https_context
 from window_finder import (
@@ -97,7 +97,6 @@ QUOTE_PAIRS = (("“", "”"), ("‘", "’"), ("「", "」"), ("『", "』"), (
 # Bump when request handling changes, so older machine translations are not reused.
 CACHE_KEY_PREFIX = "\x01v2:"
 GLOSSARY_CACHE_KEY_PREFIX = "\x01v3:"
-GLOSSARY_NAME_PREFIX = "arknights_glossary"
 DEEPL_CONTEXT = (
     "명일방주(Arknights) 모바일 게임의 UI 문구와 대사. "
     "作战은 작전, 干员은 오퍼레이터, 代理指挥는 대리 지휘."

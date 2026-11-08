@@ -112,6 +112,41 @@
                     style="@style/FieldLabel"
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
+                    android:text="앱 버전" />
+
+                <TextView
+                    android:id="@+id/app_status"
+                    style="@style/Hint"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content" />
+            </LinearLayout>
+
+            <Button
+                android:id="@+id/open_release"
+                style="@style/SecondaryButton"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="릴리스 열기" />
+        </LinearLayout>
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginBottom="20dp"
+            android:gravity="center_vertical"
+            android:orientation="horizontal">
+
+            <LinearLayout
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_marginEnd="12dp"
+                android:layout_weight="1"
+                android:orientation="vertical">
+
+                <TextView
+                    style="@style/FieldLabel"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
                     android:text="GitHub 사전" />
 
                 <TextView
@@ -127,6 +162,42 @@
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:text="업데이트 확인" />
+        </LinearLayout>
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginBottom="20dp"
+            android:gravity="center_vertical"
+            android:orientation="horizontal">
+
+            <LinearLayout
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_marginEnd="12dp"
+                android:layout_weight="1"
+                android:orientation="vertical">
+
+                <TextView
+                    style="@style/FieldLabel"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="DeepL 용어집" />
+
+                <TextView
+                    android:id="@+id/glossary_status"
+                    style="@style/Hint"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="사전에 없는 문구의 용어를 공식 표기로 맞춥니다 (계정당 한 번 등록)" />
+            </LinearLayout>
+
+            <Button
+                android:id="@+id/upload_glossary"
+                style="@style/SecondaryButton"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="용어집 등록" />
         </LinearLayout>
 
         <LinearLayout

@@ -3,12 +3,14 @@
 from __future__ import annotations
 
 import argparse
+import csv
 import ctypes
 import os
 from pathlib import Path
 import subprocess
 import sys
 import threading
+import webbrowser
 
 tk = None
 messagebox = None
@@ -25,8 +27,13 @@ def _load_tkinter() -> None:
     messagebox = messagebox_module
     ttk = ttk_module
 
-from app_paths import icon_path, install_dir, overlay_log_path
-from dictionary_updater import update_dictionary
+from app_paths import APP_VERSION, glossary_path, icon_path, install_dir, overlay_log_path
+from deepl_translate import GLOSSARY_NAME_PREFIX, create_glossary, delete_glossary, list_glossaries
+from dictionary_updater import (
+    PUBLIC_DICTIONARY_REPO, dictionary_update_available, latest_release, update_dictionary, version_newer,
+)
+
+RELEASES_URL = f"https://github.com/{PUBLIC_DICTIONARY_REPO}/releases/latest"
 from secure_settings import load_settings, save_settings
 from window_finder import Window, find_windows
 
@@ -83,6 +90,48 @@ def _set_window_icon(root) -> None:
         pass
 
 
+def read_glossary(path: Path) -> list[tuple[str, str]]:
+    """(source, target) pairs from DeepL's CSV format: source, target, source language, target language."""
+    entries: dict[str, str] = {}
+    with path.open("r", encoding="utf-8-sig", newline="") as handle:
+        for row in csv.reader(handle):
+            if len(row) < 2:
+                continue
+            # TSV upload cannot carry tabs or line breaks inside a term.
+            source, target = (" ".join(cell.split()) for cell in row[:2])
+            if source and target:
+                entries.setdefault(source, target)
+    return list(entries.items())
+
+
+def upload_glossary(auth_key: str) -> str:
+    """Put the bundled glossary on the key's DeepL account, replacing older app glossaries."""
+    path = glossary_path()
+    name = path.stem.removeprefix("glossary_")
+    entries = read_glossary(path)
+    if not entries:
+        raise RuntimeError(f"용어집 파일이 비어 있습니다: {path}")
+    try:
+        existing = list_glossaries(auth_key, GLOSSARY_NAME_PREFIX, "ZH", "KO")
+    except OSError as error:
+        raise RuntimeError(f"계정의 용어집을 확인하지 못했습니다: {error}") from error
+    if any(item.get("name") == name and item.get("ready") and item.get("entry_count") == len(entries) for item in existing):
+        return f"이미 등록되어 있습니다: {name} (용어 {len(entries):,}개)"
+    created = create_glossary(auth_key, name, "ZH", "KO", entries)
+    # Only after the new glossary exists, so a failed upload leaves the old one in use.
+    failed = 0
+    for item in existing:
+        try:
+            delete_glossary(auth_key, str(item["glossary_id"]))
+        except RuntimeError:
+            failed += 1
+    count = int(created.get("entry_count") or len(entries))
+    message = f"용어집 등록 완료: {name} (용어 {count:,}개)."
+    if failed:
+        message += f" 이전 용어집 {failed}개는 지우지 못했지만, 새 용어집이 사용됩니다."
+    return message
+
+
 class TranslatorGui:
     def __init__(self, root: tk.Tk):
         self.root = root
@@ -93,6 +142,7 @@ class TranslatorGui:
         self.window_by_label: dict[str, Window] = {}
         self.child: subprocess.Popen | None = None
         self.busy_update = False
+        self.busy_glossary = False
 
         self.api_key = tk.StringVar(value=self.settings.get("api_key", ""))
         self.show_api_key = tk.BooleanVar(value=False)
@@ -100,6 +150,8 @@ class TranslatorGui:
         self.window_choice = tk.StringVar()
         self.status = tk.StringVar(value="게임 창을 찾고 있습니다.")
         self.dictionary_status = tk.StringVar(value="현재 버전 확인 중")
+        self.app_status = tk.StringVar(value=f"현재 {APP_VERSION} · 새 버전 확인 중")
+        self.release_url = RELEASES_URL
 
         self._build_ui()
         # Fit the height to the content, which depends on the display scale.
@@ -110,6 +162,44 @@ class TranslatorGui:
         self.refresh_windows()
         self._refresh_dictionary_status()
         self.root.after(500, self._poll_child)
+        threading.Thread(target=self._check_updates_worker, daemon=True).start()
+
+    def _check_updates_worker(self) -> None:
+        """Ask GitHub once at start whether a newer app release or dictionary exists. Nothing is downloaded."""
+        try:
+            release = latest_release()
+            app_result = (release, None)
+        except Exception as error:
+            app_result = (None, str(error))
+        try:
+            dictionary_result = (dictionary_update_available(), None)
+        except Exception as error:
+            dictionary_result = (None, str(error))
+        self.root.after(0, lambda: self._updates_checked(app_result, dictionary_result))
+
+    def _updates_checked(self, app_result, dictionary_result) -> None:
+        release, app_error = app_result
+        notices = []
+        if release is None:
+            self.app_status.set(f"현재 {APP_VERSION} · 새 버전 확인 실패")
+        elif version_newer(release["version"], APP_VERSION):
+            self.release_url = release["url"]
+            self.app_status.set(f"현재 {APP_VERSION} · 새 버전 {release['tag']}이 있습니다")
+            self.release_button.configure(text="새 버전 받기", style="Primary.TButton")
+            notices.append(f"새 앱 버전 {release['tag']}이 있습니다.")
+        else:
+            self.app_status.set(f"현재 {APP_VERSION} · 최신 버전")
+        found, _dictionary_error = dictionary_result
+        # The button already shows progress while an update the user started is running.
+        if found is not None and found[1] and not self.busy_update:
+            self.dictionary_status.set(f"{self.dictionary_status.get()} · 새 사전 {found[0]} 있음")
+            self.update_button.configure(text="사전 업데이트", style="Primary.TButton")
+            notices.append("새 사전이 있습니다.")
+        if notices and (self.child is None or self.child.poll() is not None):
+            self.status.set(" ".join(notices))
+
+    def open_release(self) -> None:
+        webbrowser.open(self.release_url)
 
     def _build_ui(self) -> None:
         card = ttk.Frame(self.root, padding=(26, 8, 26, 22))
@@ -140,6 +230,15 @@ class TranslatorGui:
         ttk.Checkbutton(key_row, text="표시", style="Toggle.TCheckbutton", variable=self.show_api_key, command=self._toggle_key_visibility).pack(side="left")
         ttk.Checkbutton(card, text="API 키를 이 Windows 계정에 암호화해 저장", style="Toggle.TCheckbutton", variable=self.save_api_key).pack(anchor="w", pady=(0, 14))
 
+        app_row = ttk.Frame(card)
+        app_row.pack(fill="x", pady=(0, 14))
+        app_text = ttk.Frame(app_row)
+        app_text.pack(side="left", fill="x", expand=True)
+        ttk.Label(app_text, text="앱 버전", style="Field.TLabel").pack(anchor="w")
+        ttk.Label(app_text, textvariable=self.app_status, style="Hint.TLabel").pack(anchor="w")
+        self.release_button = ttk.Button(app_row, text="릴리스 열기", command=self.open_release)
+        self.release_button.pack(side="right")
+
         dictionary_row = ttk.Frame(card)
         dictionary_row.pack(fill="x", pady=(0, 14))
         dictionary_text = ttk.Frame(dictionary_row)
@@ -148,6 +247,15 @@ class TranslatorGui:
         ttk.Label(dictionary_text, textvariable=self.dictionary_status, style="Hint.TLabel").pack(anchor="w")
         self.update_button = ttk.Button(dictionary_row, text="업데이트 확인", command=self.update_dictionary)
         self.update_button.pack(side="right")
+
+        glossary_row = ttk.Frame(card)
+        glossary_row.pack(fill="x", pady=(0, 14))
+        glossary_text = ttk.Frame(glossary_row)
+        glossary_text.pack(side="left", fill="x", expand=True)
+        ttk.Label(glossary_text, text="DeepL 용어집", style="Field.TLabel").pack(anchor="w")
+        ttk.Label(glossary_text, text="사전에 없는 문구의 용어를 공식 표기로 맞춥니다 (계정당 한 번 등록)", style="Hint.TLabel", wraplength=400).pack(anchor="w")
+        self.glossary_button = ttk.Button(glossary_row, text="용어집 등록", command=self.upload_glossary)
+        self.glossary_button.pack(side="right")
 
         ttk.Frame(card, style="Line.TFrame", height=1).pack(fill="x", pady=(0, 14))
         actions = ttk.Frame(card)
@@ -299,7 +407,7 @@ class TranslatorGui:
 
     def _update_done(self, result, error: str | None) -> None:
         self.busy_update = False
-        self.update_button.configure(state="normal", text="업데이트 확인")
+        self.update_button.configure(state="normal", text="업데이트 확인", style="TButton")
         if error:
             self.status.set(f"사전 업데이트 실패: {error}")
         else:
@@ -307,6 +415,43 @@ class TranslatorGui:
             state = "업데이트 완료" if changed else "최신 버전"
             self.status.set(f"{state}: {tag}")
             self.dictionary_status.set(f"현재 버전: {tag}")
+
+    def upload_glossary(self) -> None:
+        if self.busy_glossary:
+            return
+        auth_key = self.api_key.get().strip()
+        if not auth_key:
+            messagebox.showerror("API 키 없음", "DeepL API 키를 먼저 입력하세요.", parent=self.root)
+            return
+        if not messagebox.askokcancel(
+            "DeepL 용어집 등록",
+            "이 API 키의 DeepL 계정에 명일방주 용어집(중국어→한국어)을 등록합니다.\n"
+            f"이름이 {GLOSSARY_NAME_PREFIX}로 시작하는 이전 용어집은 새 용어집으로 바꿉니다.\n"
+            "용어집 등록은 번역 사용량에 포함되지 않습니다.",
+            parent=self.root,
+        ):
+            return
+        self.busy_glossary = True
+        self.glossary_button.configure(state="disabled", text="등록 중...")
+        self.status.set("DeepL 계정에 용어집을 등록하고 있습니다.")
+        threading.Thread(target=self._glossary_worker, args=(auth_key,), daemon=True).start()
+
+    def _glossary_worker(self, auth_key: str) -> None:
+        try:
+            message = upload_glossary(auth_key)
+            self.root.after(0, lambda: self._glossary_done(message, None))
+        except Exception as error:
+            self.root.after(0, lambda text=str(error): self._glossary_done(None, text))
+
+    def _glossary_done(self, message: str | None, error: str | None) -> None:
+        self.busy_glossary = False
+        self.glossary_button.configure(state="normal", text="용어집 등록")
+        if error:
+            self.status.set(f"용어집 등록 실패: {error}")
+            return
+        if self.child is not None and self.child.poll() is None:
+            message += " 번역 중지 후 다시 시작하면 적용됩니다."
+        self.status.set(message)
 
     def close(self) -> None:
         self.stop_overlay()

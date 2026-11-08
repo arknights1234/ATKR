@@ -1,7 +1,18 @@
+import java.io.File
+import java.util.Properties
+
 plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.android")
 }
+
+fun readProperties(file: File): Properties = Properties().apply { file.reader().use { reader -> load(reader) } }
+
+// The release key stays outside the repository. local.properties (not committed) names its
+// properties file as atkr.signing=...; without it a release build falls back to the debug key.
+val signingFile: File? = rootDir.resolve("local.properties").takeIf { it.isFile }
+    ?.let { readProperties(it).getProperty("atkr.signing") }
+    ?.let { File(it) }?.takeIf { it.isFile }
 
 android {
     namespace = "io.github.arknights1234.atkr"
@@ -12,8 +23,9 @@ android {
         // READ_MEDIA_IMAGES starts at Android 13, the version this test runs on.
         minSdk = 33
         targetSdk = 33
-        versionCode = 12
-        versionName = "1.0.4"
+        versionCode = 13
+        // Same as APP_VERSION in app_paths.py and the GitHub release tag (v1.3.0).
+        versionName = "1.3.0"
         ndk {
             abiFilters += "arm64-v8a"
         }
@@ -34,6 +46,24 @@ android {
         buildConfig = true
     }
 
+    signingConfigs {
+        if (signingFile != null) {
+            create("release") {
+                val signing = readProperties(signingFile)
+                storeFile = File(signing.getProperty("storeFile"))
+                storePassword = signing.getProperty("storePassword")
+                keyAlias = signing.getProperty("keyAlias")
+                keyPassword = signing.getProperty("keyPassword")
+            }
+        }
+    }
+    buildTypes {
+        getByName("release") {
+            isMinifyEnabled = false
+            signingConfig = signingConfigs.findByName("release") ?: signingConfigs.getByName("debug")
+        }
+    }
+
     applicationVariants.all {
         outputs.all {
             (this as com.android.build.gradle.internal.api.BaseVariantOutputImpl).outputFileName = "ArknightsScreenTranslator.apk"
@@ -45,6 +75,7 @@ android {
 val sharedAssets = layout.buildDirectory.dir("generated/sharedAssets")
 val copySharedAssets = tasks.register<Copy>("copySharedAssets") {
     from(rootDir.resolve("../data/runtime_dictionary.sqlite3"))
+    from(rootDir.resolve("../data/glossary_arknights_glossary_v3.csv"))
     from(rootDir.resolve("../font/NotoSansCJKkr-Medium.otf"))
     from(rootDir.resolve("../font/LICENSE.txt")) { rename { "font_license.txt" } }
     into(sharedAssets)

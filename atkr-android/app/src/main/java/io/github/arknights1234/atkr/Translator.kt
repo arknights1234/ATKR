@@ -159,7 +159,7 @@ class Translator(context: Context, private val dictionary: Dictionary, private v
     private companion object {
         const val TAG = "Translator"
         const val TIMEOUT_MS = 20000
-        const val GLOSSARY_NAME_PREFIX = "arknights_glossary"
+        const val GLOSSARY_NAME_PREFIX = GlossaryUploader.NAME_PREFIX
         const val DEEPL_CONTEXT = "명일방주(Arknights) 모바일 게임의 UI 문구와 대사. 作战은 작전, 干员은 오퍼레이터, 代理指挥는 대리 지휘."
     }
 }
