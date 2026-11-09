@@ -12,9 +12,9 @@ android {
         // READ_MEDIA_IMAGES starts at Android 13, the version this test runs on.
         minSdk = 33
         targetSdk = 33
-        versionCode = 14
-        // Same as APP_VERSION in app_paths.py and the GitHub release tag (v1.3.0).
-        versionName = "1.3.0"
+        versionCode = 15
+        // Same as APP_VERSION in app_paths.py and the GitHub release tag (v1.3.1).
+        versionName = "1.3.1"
         ndk {
             abiFilters += "arm64-v8a"
         }

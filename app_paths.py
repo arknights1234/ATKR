@@ -7,8 +7,8 @@ from pathlib import Path
 import sys
 
 
-# Matches the GitHub release tag (v1.3.0) and the Android versionName; raise both together.
-APP_VERSION = "1.3.0"
+# Matches the GitHub release tag (v1.3.1) and the Android versionName; raise both together.
+APP_VERSION = "1.3.1"
 
 
 def install_dir() -> Path:
