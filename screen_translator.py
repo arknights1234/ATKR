@@ -22,7 +22,7 @@ import numpy as np
 
 from app_paths import active_runtime_dictionary_path, runtime_dictionary_path, translation_cache_path
 from deepl_translate import GLOSSARY_NAME_PREFIX, find_glossary_id, prepare_connection, translate
-from localization_text import EDGE_SYMBOLS, OCR_NARROW_FORMS, PLACEHOLDER_RE, fill_numbers, fold_text, loose_key, normalize_text
+from localization_text import EDGE_SYMBOLS, OCR_NARROW_FORMS, PLACEHOLDER_RE, fill_numbers, fix_bracketed_names, fold_text, loose_key, normalize_text
 from net import https_context
 from window_finder import (
     BITMAPINFO,
@@ -554,7 +554,7 @@ def make_translation_job(captured_image: np.ndarray, auth_key: str | None = None
             glossary_checked = True
         cache_key = (GLOSSARY_CACHE_KEY_PREFIX if glossary_id else CACHE_KEY_PREFIX) + source_text
         if cache_key in TRANSLATION_CACHE:
-            detection["translation"] = TRANSLATION_CACHE[cache_key]
+            detection["translation"] = fix_bracketed_names(source_text, TRANSLATION_CACHE[cache_key], runtime_dictionary_lookup)
             detection["translation_source"] = "cache"
             cache_hits += 1
             continue
@@ -595,7 +595,7 @@ def make_translation_job(captured_image: np.ndarray, auth_key: str | None = None
             translated_text = result.get("text", detections[index]["text"])
             if not glossary_id:
                 translated_text = restore_official_terms(translated_text)
-            detections[index]["translation"] = translated_text
+            detections[index]["translation"] = fix_bracketed_names(str(detections[index]["text"]), translated_text, runtime_dictionary_lookup)
             detections[index]["translation_source"] = "deepl"
             TRANSLATION_CACHE[cache_key] = translated_text
         if translations:

@@ -3,6 +3,7 @@ package io.github.arknights1234.atkr
 import android.content.Context
 import android.util.Log
 import io.github.arknights1234.atkr.core.Detection
+import io.github.arknights1234.atkr.core.fixBracketedNames
 import io.github.arknights1234.atkr.core.hasHanzi
 import io.github.arknights1234.atkr.core.normalizeText
 import org.json.JSONArray
@@ -45,7 +46,7 @@ class Translator(context: Context, private val dictionary: Dictionary, private v
             }
             val cached = cache.optString(cacheKey(text, glossaryId != null), "")
             if (cached.isNotEmpty()) {
-                item.translation = cached
+                item.translation = fixBracketedNames(text, cached, dictionary::exact)
                 cacheHits++
             } else {
                 pending.add(item)
@@ -95,7 +96,7 @@ class Translator(context: Context, private val dictionary: Dictionary, private v
         }
         val (translations, usedGlossary) = results
         pending.forEachIndexed { index, item ->
-            item.translation = translations[index]
+            item.translation = fixBracketedNames(texts[index], translations[index], dictionary::exact)
             cache.put(cacheKey(texts[index], usedGlossary), translations[index])
         }
         runCatching { cacheFile.writeText(cache.toString()) }.onFailure { Log.w(TAG, "캐시 저장 실패: $it") }

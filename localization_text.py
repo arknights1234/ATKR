@@ -10,6 +10,8 @@ import unicodedata
 # <休整期结束时>, are shown in the game as written, so they stay.
 MARKUP_RE = re.compile(r"<[^<>\u3040-\u30ff\u3400-\u9fff\uac00-\ud7af]*>")
 ANY_BRACKET_RE = re.compile(r"<[^>]*>")
+SOURCE_NAME_RE = re.compile(r"【[^【】]+】")
+TRANSLATED_NAME_RE = re.compile(r"【[^【】]+】|\[[^\[\]]+\]")
 PLACEHOLDER_RE = re.compile(r"\{[^{}]*\}|%[sd]")
 NUMBER_RE = re.compile(r"\d+(?:\.\d+)?%?")
 EDGE_SYMBOLS = " \t\r\n.,:;!?…·•>＜<|-_~*"
@@ -24,6 +26,19 @@ def normalize_text(text: str) -> str:
 def strip_all_brackets(text: str) -> str:
     """The form older versions used, which also dropped bracketed words such as <休整期结束时>."""
     return ANY_BRACKET_RE.sub("", text).strip()
+
+
+def fix_bracketed_names(source: str, translated: str, exact) -> str:
+    """Give each 【name】 its dictionary wording; DeepL keeps the brackets but guesses the name inside.
+
+    DeepL keeps the brackets in order, so the Nth pair in the source is the Nth in the result.
+    """
+    names = SOURCE_NAME_RE.findall(source)
+    slots = TRANSLATED_NAME_RE.findall(translated)
+    if not names or len(names) != len(slots):
+        return translated
+    replacements = iter(names)
+    return TRANSLATED_NAME_RE.sub(lambda match: exact(next(replacements)) or match.group(0), translated)
 
 
 def mask_numbers(text: str) -> str:

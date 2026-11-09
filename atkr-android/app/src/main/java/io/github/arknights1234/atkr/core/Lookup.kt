@@ -30,6 +30,17 @@ fun hasHanzi(text: String) = text.any(::isHanzi)
 /** Remove inline presentation tags such as <@ro.get> and </>. */
 fun normalizeText(text: String) = MARKUP.replace(text, "").trim()
 
+private val SOURCE_NAME = Regex("【[^【】]+】")
+private val TRANSLATED_NAME = Regex("""【[^【】]+】|\[[^\[\]]+]""")
+
+/** Same as fix_bracketed_names in localization_text.py: DeepL keeps 【】 in order but guesses the name inside. */
+fun fixBracketedNames(source: String, translated: String, exact: (String) -> String?): String {
+    val names = SOURCE_NAME.findAll(source).map { it.value }.toList()
+    if (names.isEmpty() || names.size != TRANSLATED_NAME.findAll(translated).count()) return translated
+    val replacements = names.iterator()
+    return TRANSLATED_NAME.replace(translated) { match -> exact(replacements.next()) ?: match.value }
+}
+
 fun narrowForms(text: String) = text.replace('％', '%').replace('（', '(').replace('）', ')')
 
 private fun nfkc(text: String) = Normalizer.normalize(text, Normalizer.Form.NFKC)
